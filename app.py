@@ -14,6 +14,7 @@ import msal
 import requests
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
+from sqlalchemy.pool import NullPool
 from flask import Flask, render_template, request, redirect, url_for, flash, Response
 from flask_sqlalchemy import SQLAlchemy
 from PyPDF2 import PdfReader
@@ -25,6 +26,10 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///data/app.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "poolclass": NullPool,
+    "connect_args": {"check_same_thread": False},
+}
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -32,7 +37,7 @@ logger = logging.getLogger(__name__)
 def _set_sqlite_pragmas(dbapi_conn, _):
     if isinstance(dbapi_conn, sqlite3.Connection):
         dbapi_conn.execute("PRAGMA journal_mode=WAL")
-        dbapi_conn.execute("PRAGMA busy_timeout=20000")
+        dbapi_conn.execute("PRAGMA busy_timeout=10000")
 
 db = SQLAlchemy(app)
 
@@ -235,8 +240,8 @@ def _purge_old_logs():
     retention_days = int(get_env("LOG_RETENTION_DAYS", 30))
     cutoff = datetime.utcnow() - timedelta(days=retention_days)
     deleted = LogEntry.query.filter(LogEntry.created_at < cutoff).delete()
+    db.session.commit()
     if deleted:
-        db.session.commit()
         logger.info("Purged %d log entries older than %d days.", deleted, retention_days)
 
 
@@ -293,8 +298,6 @@ def poll_inbox():
                 _purge_old_logs()
             except Exception as exc:
                 log_message(f"Email polling error: {exc}", "ERROR")
-            finally:
-                db.session.remove()
 
             time.sleep(interval)
 
