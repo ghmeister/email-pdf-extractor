@@ -7,7 +7,9 @@ import logging
 import tempfile
 from datetime import datetime, timedelta
 from functools import wraps
+from pathlib import Path
 
+import msal
 import requests
 from flask import Flask, render_template, request, redirect, url_for, flash, Response
 from flask_sqlalchemy import SQLAlchemy
@@ -84,9 +86,12 @@ def require_auth(f):
 _poll_thread: threading.Thread | None = None
 _poll_last_at: datetime | None = None
 
-# --- OAuth token cache ---
+# --- MSAL / OneDrive auth ---
 
-_token_cache: dict = {"token": None, "expires_at": 0.0}
+_ONEDRIVE_SCOPES = ["Files.ReadWrite"]
+_TOKEN_CACHE_PATH = Path(os.environ.get("TOKEN_CACHE_PATH", "data/.token_cache.json"))
+_msal_app: msal.PublicClientApplication | None = None
+_msal_cache: msal.SerializableTokenCache | None = None
 
 
 # --- Helpers ---
@@ -152,31 +157,51 @@ def extract_pdf_text(buffer):
         return ""
 
 
-def get_access_token():
-    now = time.time()
-    if _token_cache["token"] and now < _token_cache["expires_at"] - 60:
-        return _token_cache["token"]
+def _get_msal_app() -> tuple[msal.PublicClientApplication, msal.SerializableTokenCache]:
+    global _msal_app, _msal_cache
+    if _msal_app is None:
+        client_id = get_env("ONEDRIVE_CLIENT_ID")
+        if not client_id:
+            raise ValueError("ONEDRIVE_CLIENT_ID is required.")
+        _msal_cache = msal.SerializableTokenCache()
+        if _TOKEN_CACHE_PATH.exists():
+            _msal_cache.deserialize(_TOKEN_CACHE_PATH.read_text(encoding="utf-8"))
+        _msal_app = msal.PublicClientApplication(
+            client_id,
+            authority="https://login.microsoftonline.com/consumers",
+            token_cache=_msal_cache,
+        )
+    return _msal_app, _msal_cache
 
-    refresh_token = get_env("ONEDRIVE_REFRESH_TOKEN")
-    client_id = get_env("ONEDRIVE_CLIENT_ID")
-    client_secret = get_env("ONEDRIVE_CLIENT_SECRET")
-    tenant_id = get_env("ONEDRIVE_TENANT_ID")
-    if not all([refresh_token, client_id, client_secret, tenant_id]):
-        raise ValueError("Missing OneDrive OAuth configuration.")
 
-    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
-    response = requests.post(token_url, data={
-        "grant_type": "refresh_token",
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "refresh_token": refresh_token,
-        "scope": "offline_access Files.ReadWrite.All openid profile email",
-    })
-    response.raise_for_status()
-    data = response.json()
-    _token_cache["token"] = data["access_token"]
-    _token_cache["expires_at"] = now + data.get("expires_in", 3600)
-    return _token_cache["token"]
+def _persist_msal_cache(cache: msal.SerializableTokenCache) -> None:
+    if cache.has_state_changed:
+        _TOKEN_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _TOKEN_CACHE_PATH.write_text(cache.serialize(), encoding="utf-8")
+
+
+def get_access_token() -> str:
+    msal_app, cache = _get_msal_app()
+
+    accounts = msal_app.get_accounts()
+    if accounts:
+        result = msal_app.acquire_token_silent(_ONEDRIVE_SCOPES, account=accounts[0])
+        if result and "access_token" in result:
+            _persist_msal_cache(cache)
+            return result["access_token"]
+
+    # No cached token — device code flow (blocks until user authenticates)
+    flow = msal_app.initiate_device_flow(scopes=_ONEDRIVE_SCOPES)
+    if "user_code" not in flow:
+        raise RuntimeError(f"Could not start device flow: {flow}")
+
+    log_message(f"ONE-TIME LOGIN REQUIRED — {flow['message']}", "INFO")
+    result = msal_app.acquire_token_by_device_flow(flow)
+    if "access_token" not in result:
+        raise RuntimeError(f"Device flow failed: {result.get('error_description')}")
+
+    _persist_msal_cache(cache)
+    return result["access_token"]
 
 
 def upload_to_onedrive(filename, content_bytes):
