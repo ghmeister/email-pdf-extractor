@@ -5,11 +5,11 @@ import imaplib
 import email
 import logging
 import tempfile
+import sqlite3
 from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
 
-import sqlite3
 import msal
 import requests
 from sqlalchemy import event
@@ -24,20 +24,23 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///data/app.db")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:////app/data/app.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "poolclass": NullPool,
     "connect_args": {"check_same_thread": False},
 }
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
 
 @event.listens_for(Engine, "connect")
 def _set_sqlite_pragmas(dbapi_conn, _):
     if isinstance(dbapi_conn, sqlite3.Connection):
         dbapi_conn.execute("PRAGMA journal_mode=WAL")
         dbapi_conn.execute("PRAGMA busy_timeout=10000")
+
 
 db = SQLAlchemy(app)
 
@@ -62,7 +65,7 @@ class LogEntry(db.Model):
 
 class ProcessedEmail(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    message_id = db.Column(db.String(255), unique=True, nullable=False)
+    message_id = db.Column(db.Text, unique=True, nullable=False)  # Text: Message-IDs can exceed 255 chars
     processed_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -112,7 +115,7 @@ _poll_last_at: datetime | None = None
 # --- MSAL / OneDrive auth ---
 
 _ONEDRIVE_SCOPES = ["Files.ReadWrite"]
-_TOKEN_CACHE_PATH = Path(os.environ.get("TOKEN_CACHE_PATH", "data/.token_cache.json"))
+_TOKEN_CACHE_PATH = Path(os.environ.get("TOKEN_CACHE_PATH", "/app/data/.token_cache.json"))
 _msal_app: msal.PublicClientApplication | None = None
 _msal_cache: msal.SerializableTokenCache | None = None
 
@@ -120,17 +123,16 @@ _msal_cache: msal.SerializableTokenCache | None = None
 # --- Helpers ---
 
 def log_message(message, level="INFO"):
-    entry = LogEntry(level=level, message=message)
-    db.session.add(entry)
-    db.session.commit()
+    try:
+        entry = LogEntry(level=level, message=message)
+        db.session.add(entry)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
     if level == "ERROR":
         logger.error(message)
     else:
         logger.info(message)
-
-
-def get_env(name, default=None):
-    return os.environ.get(name, default)
 
 
 def load_rules():
@@ -143,7 +145,7 @@ def _condition_matches(condition_str, target):
     return any(t.lower() in target.lower() for t in terms)
 
 
-def match_rule(message, attachment_name, pdf_text):
+def match_rule(message, attachment_name, pdf_text, email_body=""):
     for rule in load_rules():
         if rule.sender_contains and not _condition_matches(rule.sender_contains, message.get("From", "")):
             continue
@@ -151,10 +153,8 @@ def match_rule(message, attachment_name, pdf_text):
             continue
         if rule.filename_contains and not _condition_matches(rule.filename_contains, attachment_name):
             continue
-        if rule.body_contains:
-            body = extract_email_body(message)
-            if not _condition_matches(rule.body_contains, body):
-                continue
+        if rule.body_contains and not _condition_matches(rule.body_contains, email_body):
+            continue
         if rule.pdf_text_contains and not _condition_matches(rule.pdf_text_contains, pdf_text):
             continue
         return True
@@ -183,7 +183,7 @@ def extract_pdf_text(buffer):
 def _get_msal_app() -> tuple[msal.PublicClientApplication, msal.SerializableTokenCache]:
     global _msal_app, _msal_cache
     if _msal_app is None:
-        client_id = get_env("ONEDRIVE_CLIENT_ID")
+        client_id = os.environ.get("ONEDRIVE_CLIENT_ID")
         if not client_id:
             raise ValueError("ONEDRIVE_CLIENT_ID is required.")
         _msal_cache = msal.SerializableTokenCache()
@@ -229,7 +229,7 @@ def get_access_token() -> str:
 
 def upload_to_onedrive(filename, content_bytes):
     access_token = get_access_token()
-    folder_path = get_env("ONEDRIVE_FOLDER_PATH", "/Documents/Invoices").strip("/")
+    folder_path = os.environ.get("ONEDRIVE_FOLDER_PATH", "/Documents/Invoices").strip("/")
     safe_folder = "/".join(requests.utils.quote(p, safe="") for p in folder_path.split("/"))
     safe_filename = requests.utils.quote(filename, safe="")
     upload_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{safe_folder}/{safe_filename}:/content"
@@ -243,75 +243,96 @@ def upload_to_onedrive(filename, content_bytes):
 
 
 def _purge_old_records():
-    retention_days = int(get_env("LOG_RETENTION_DAYS", 30))
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
-    deleted_logs = LogEntry.query.filter(LogEntry.created_at < cutoff).delete()
-    deleted_emails = ProcessedEmail.query.filter(ProcessedEmail.processed_at < cutoff).delete()
+    now = datetime.utcnow()
+    log_cutoff = now - timedelta(days=int(os.environ.get("LOG_RETENTION_DAYS", 30)))
+    email_cutoff = now - timedelta(days=int(os.environ.get("PROCESSED_EMAIL_RETENTION_DAYS", 365)))
+    deleted_logs = LogEntry.query.filter(LogEntry.created_at < log_cutoff).delete()
+    deleted_emails = ProcessedEmail.query.filter(ProcessedEmail.processed_at < email_cutoff).delete()
     db.session.commit()
     if deleted_logs or deleted_emails:
-        logger.info("Purged %d log entries and %d processed email records older than %d days.",
-                    deleted_logs, deleted_emails, retention_days)
+        logger.info("Purged %d log entries and %d processed email records.", deleted_logs, deleted_emails)
+
+
+def _process_message(message) -> bool:
+    """Process all PDF attachments in one email. Returns True if no uploads failed."""
+    email_body = extract_email_body(message)
+    upload_failed = False
+    for part in message.walk():
+        is_pdf = part.get_content_type() == "application/pdf"
+        is_attachment = "attachment" in part.get("Content-Disposition", "").lower()
+        if not (is_pdf or is_attachment):
+            continue
+        filename = part.get_filename() or "attachment.pdf"
+        if not filename.lower().endswith(".pdf"):
+            continue
+        content = part.get_payload(decode=True)
+        with tempfile.SpooledTemporaryFile(mode="w+b", buffering=0) as tmp:
+            tmp.write(content)
+            tmp.seek(0)
+            pdf_text = extract_pdf_text(tmp)
+        if match_rule(message, filename, pdf_text, email_body):
+            try:
+                upload_to_onedrive(filename, content)
+            except Exception as exc:
+                log_message(f"Upload failed for '{filename}': {exc}", "ERROR")
+                upload_failed = True
+        else:
+            log_message(f"Attachment '{filename}' did not match any rules.")
+    return not upload_failed
 
 
 def poll_inbox():
     global _poll_last_at
-    host = get_env("IMAP_HOST")
-    port = int(get_env("IMAP_PORT", 993))
-    username = get_env("IMAP_USER")
-    password = get_env("IMAP_PASS")
-    folder = get_env("IMAP_FOLDER", "INBOX")
-    interval = int(get_env("POLL_INTERVAL", 120))
+    host = os.environ.get("IMAP_HOST")
+    port = int(os.environ.get("IMAP_PORT", 993))
+    username = os.environ.get("IMAP_USER")
+    password = os.environ.get("IMAP_PASS")
+    folder = os.environ.get("IMAP_FOLDER", "INBOX")
+    interval = int(os.environ.get("POLL_INTERVAL", 120))
+    lookback_days = int(os.environ.get("POLL_LOOKBACK_DAYS", 90))
 
     with app.app_context():
         if not all([host, username, password]):
             log_message("IMAP connection settings are incomplete.", "ERROR")
             return
 
+        # Eagerly authenticate with OneDrive so device flow runs at startup, not mid-poll
+        try:
+            get_access_token()
+        except Exception as exc:
+            log_message(f"OneDrive auth error at startup: {exc}", "ERROR")
+
         while True:
             try:
                 _poll_last_at = datetime.utcnow()
+                since_date = (_poll_last_at - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
                 with imaplib.IMAP4_SSL(host, port, timeout=30) as mail:
                     mail.login(username, password)
                     mail.select(folder)
-                    status, messages = mail.search(None, "UNSEEN")
+                    status, data = mail.uid("search", None, f"UNSEEN SINCE {since_date}")
                     if status != "OK":
                         log_message("Failed to search inbox.", "ERROR")
                     else:
-                        for num in messages[0].split():
-                            status, data = mail.fetch(num, "RFC822")
+                        for uid in data[0].split():
+                            status, msg_data = mail.uid("fetch", uid, "(RFC822)")
                             if status != "OK":
                                 continue
-                            message = email.message_from_bytes(data[0][1])
+                            message = email.message_from_bytes(msg_data[0][1])
                             msg_id = message.get("Message-ID", "").strip()
                             if not msg_id:
                                 continue
                             if ProcessedEmail.query.filter_by(message_id=msg_id).first():
                                 continue
-                            upload_failed = False
-                            for part in message.walk():
-                                content_disposition = part.get("Content-Disposition", "")
-                                if part.get_content_type() == "application/pdf" or "attachment" in content_disposition.lower():
-                                    filename = part.get_filename() or "attachment.pdf"
-                                    if filename.lower().endswith(".pdf"):
-                                        content = part.get_payload(decode=True)
-                                        with tempfile.SpooledTemporaryFile(mode="w+b", buffering=0) as tmp:
-                                            tmp.write(content)
-                                            tmp.seek(0)
-                                            pdf_text = extract_pdf_text(tmp)
-                                        if match_rule(message, filename, pdf_text):
-                                            try:
-                                                upload_to_onedrive(filename, content)
-                                            except Exception as exc:
-                                                log_message(f"Upload failed for '{filename}': {exc}", "ERROR")
-                                                upload_failed = True
-                                        else:
-                                            log_message(f"Attachment '{filename}' did not match any rules.")
-                            if not upload_failed:
-                                db.session.add(ProcessedEmail(message_id=msg_id))
-                                db.session.commit()
+                            if _process_message(message):
+                                try:
+                                    db.session.add(ProcessedEmail(message_id=msg_id))
+                                    db.session.commit()
+                                except Exception:
+                                    db.session.rollback()
                 _purge_old_records()
             except Exception as exc:
                 log_message(f"Email polling error: {exc}", "ERROR")
+                db.session.rollback()
 
             time.sleep(interval)
 
@@ -352,7 +373,7 @@ def rules():
 @app.route("/rules/edit/<int:rule_id>", methods=["GET", "POST"])
 @require_auth
 def edit_rule(rule_id):
-    rule = Rule.query.get_or_404(rule_id)
+    rule = db.get_or_404(Rule, rule_id)
     if request.method == "POST":
         form = request.form
         rule.name = form.get("name", rule.name)
@@ -371,7 +392,7 @@ def edit_rule(rule_id):
 @app.route("/rules/delete/<int:rule_id>", methods=["POST"])
 @require_auth
 def delete_rule(rule_id):
-    rule = Rule.query.get_or_404(rule_id)
+    rule = db.get_or_404(Rule, rule_id)
     db.session.delete(rule)
     db.session.commit()
     flash("Rule deleted.", "success")
@@ -383,7 +404,9 @@ def delete_rule(rule_id):
 def logs():
     page = int(request.args.get("page", 1))
     per_page = 25
-    entries = LogEntry.query.order_by(LogEntry.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    entries = LogEntry.query.order_by(LogEntry.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
     return render_template("logs.html", entries=entries)
 
 

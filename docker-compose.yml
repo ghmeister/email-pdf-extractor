@@ -23,6 +23,8 @@ services:
       - UI_USER=admin
       - UI_PASSWORD
       - LOG_RETENTION_DAYS=30
+      - PROCESSED_EMAIL_RETENTION_DAYS=365
+      - POLL_LOOKBACK_DAYS=90
     restart: unless-stopped
 
 volumes:
