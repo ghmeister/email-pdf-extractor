@@ -9,8 +9,11 @@ from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
 
+import sqlite3
 import msal
 import requests
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 from flask import Flask, render_template, request, redirect, url_for, flash, Response
 from flask_sqlalchemy import SQLAlchemy
 from PyPDF2 import PdfReader
@@ -22,9 +25,17 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///data/app.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "connect_args": {"timeout": 20},
+}
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
+@event.listens_for(Engine, "connect")
+def _set_sqlite_wal(dbapi_conn, _):
+    if isinstance(dbapi_conn, sqlite3.Connection):
+        dbapi_conn.execute("PRAGMA journal_mode=WAL")
 
 db = SQLAlchemy(app)
 
@@ -51,10 +62,14 @@ with app.app_context():
     db.create_all()
     if Rule.query.count() == 0:
         db.session.add(Rule(
-            name="Invoices",
+            name="Invoice (EN)",
             enabled=True,
-            subject_contains="invoice",
-            pdf_text_contains="invoice",
+            pdf_text_contains="invoice|total due|amount due|payment due|bill to|invoice no|invoice number|invoice date",
+        ))
+        db.session.add(Rule(
+            name="Rechnung (DE)",
+            enabled=True,
+            pdf_text_contains="rechnung|gesamtbetrag|zahlbar bis|rechnungsbetrag|mwst|mehrwertsteuer|rechnungsnummer|rechnungsdatum",
         ))
         db.session.commit()
 
