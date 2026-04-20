@@ -1,7 +1,7 @@
-Flask==3.0.0
-Flask-SQLAlchemy==3.1.1
-PyPDF2==3.0.1
-requests==2.32.0
-python-dotenv==1.1.0
-gunicorn==22.1.0
-msal>=1.27.0
+Flask
+Flask-SQLAlchemy
+PyPDF2
+requests
+python-dotenv
+gunicorn
+msal
