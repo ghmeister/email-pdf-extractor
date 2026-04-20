@@ -1,7 +1,7 @@
 version: '3.9'
 services:
   email-pdf-extractor:
-    build: .
+    image: ghcr.io/ghmeister/email-pdf-extractor:latest
     container_name: email-pdf-extractor
     ports:
       - "5001:5000"
