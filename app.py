@@ -260,7 +260,7 @@ def poll_inbox():
         while True:
             try:
                 _poll_last_at = datetime.utcnow()
-                with imaplib.IMAP4_SSL(host, port) as mail:
+                with imaplib.IMAP4_SSL(host, port, timeout=30) as mail:
                     mail.login(username, password)
                     mail.select(folder)
                     status, messages = mail.search(None, "UNSEEN")
