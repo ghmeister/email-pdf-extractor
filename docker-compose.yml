@@ -9,7 +9,7 @@ services:
       - email_pdf_data:/app/data
     environment:
       - FLASK_ENV=production
-      - DATABASE_URL=sqlite:///data/app.db
+      - DATABASE_URL=sqlite:////app/data/app.db
       - IMAP_HOST
       - IMAP_PORT=993
       - IMAP_USER
@@ -18,7 +18,7 @@ services:
       - POLL_INTERVAL=120
       - ONEDRIVE_CLIENT_ID
       - ONEDRIVE_FOLDER_PATH=/Documents/Invoices
-      - TOKEN_CACHE_PATH=data/.token_cache.json
+      - TOKEN_CACHE_PATH=/app/data/.token_cache.json
       - SECRET_KEY=replace-this-with-a-secure-value
       - UI_USER=admin
       - UI_PASSWORD
