@@ -251,6 +251,7 @@ def _upload_sidecar(filename, message):
         "from": message.get("From", ""),
         "subject": message.get("Subject", ""),
         "date": message.get("Date", ""),
+        "message_id": message.get("Message-ID", "").strip(),
     }
     try:
         upload_to_onedrive(
