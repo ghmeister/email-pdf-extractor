@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Email PDF Extractor</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <header>
+      <h1>Email PDF Extractor</h1>
+      <nav>
+        <a href="{{ url_for('index') }}">Home</a>
+        <a href="{{ url_for('rules') }}">Rules</a>
+        <a href="{{ url_for('logs') }}">Logs</a>
+      </nav>
+    </header>
+    <main>
+      <section>
+        <h2>Configured Rules</h2>
+        <ul>
+          {% for rule in rules %}
+            <li>{{ rule.name }} {% if not rule.enabled %}(disabled){% endif %}</li>
+          {% else %}
+            <li>No rules configured yet.</li>
+          {% endfor %}
+        </ul>
+      </section>
+
+      <section>
+        <h2>Recent Activity</h2>
+        <ul>
+          {% for log in logs %}
+            <li>[{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}] {{ log.level }} - {{ log.message }}</li>
+          {% else %}
+            <li>No logs available.</li>
+          {% endfor %}
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

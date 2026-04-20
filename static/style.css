@@ -1,0 +1,83 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  background: #f3f4f6;
+  color: #111;
+}
+header {
+  background: #1f2937;
+  color: white;
+  padding: 20px 24px;
+}
+header h1 {
+  margin: 0 0 8px;
+}
+nav a {
+  color: #d1d5db;
+  margin-right: 16px;
+  text-decoration: none;
+}
+nav a:hover {
+  color: white;
+}
+main {
+  padding: 24px;
+}
+section {
+  background: white;
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th, td {
+  text-align: left;
+  padding: 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+input[type="text"], input[type="search"] {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+label {
+  display: block;
+  margin-bottom: 12px;
+}
+button {
+  background: #2563eb;
+  border: none;
+  color: white;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+button:hover {
+  background: #1d4ed8;
+}
+.flash-list {
+  margin-bottom: 16px;
+}
+.flash {
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.flash.success {
+  background: #d1fae5;
+  color: #065f46;
+}
+.pagination {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 16px;
+}
+.pagination a {
+  color: #2563eb;
+}

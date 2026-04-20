@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rules - Email PDF Extractor</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <header>
+      <h1>Rules</h1>
+      <nav>
+        <a href="{{ url_for('index') }}">Home</a>
+        <a href="{{ url_for('rules') }}">Rules</a>
+        <a href="{{ url_for('logs') }}">Logs</a>
+      </nav>
+    </header>
+    <main>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-list">
+            {% for category, message in messages %}
+              <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <section>
+        <h2>Add a new rule</h2>
+        <form method="post">
+          <label>Name <input name="name" required></label>
+          <label><input name="enabled" type="checkbox" checked> Enabled</label>
+          <label>Sender contains <input name="sender_contains"></label>
+          <label>Subject contains <input name="subject_contains"></label>
+          <label>Filename contains <input name="filename_contains"></label>
+          <label>Email body contains <input name="body_contains"></label>
+          <label>PDF text contains <input name="pdf_text_contains"></label>
+          <button type="submit">Save rule</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Existing rules</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Enabled</th>
+              <th>Conditions</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rule in rules %}
+            <tr>
+              <td>{{ rule.id }}</td>
+              <td>{{ rule.name }}</td>
+              <td>{{ 'Yes' if rule.enabled else 'No' }}</td>
+              <td>
+                {{ rule.sender_contains }} | {{ rule.subject_contains }} | {{ rule.filename_contains }} | {{ rule.body_contains }} | {{ rule.pdf_text_contains }}
+              </td>
+              <td>
+                <form method="post" action="{{ url_for('delete_rule', rule_id=rule.id) }}" onsubmit="return confirm('Delete this rule?');">
+                  <button type="submit">Delete</button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5">No rules configured.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>

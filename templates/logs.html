@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Logs - Email PDF Extractor</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <header>
+      <h1>Logs</h1>
+      <nav>
+        <a href="{{ url_for('index') }}">Home</a>
+        <a href="{{ url_for('rules') }}">Rules</a>
+        <a href="{{ url_for('logs') }}">Logs</a>
+      </nav>
+    </header>
+    <main>
+      <section>
+        <h2>Activity log</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Level</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in entries.items %}
+            <tr>
+              <td>{{ entry.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+              <td>{{ entry.level }}</td>
+              <td>{{ entry.message }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3">No logs found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="pagination">
+          {% if entries.has_prev %}
+            <a href="?page={{ entries.prev_num }}">Previous</a>
+          {% endif %}
+          <span>Page {{ entries.page }} of {{ entries.pages }}</span>
+          {% if entries.has_next %}
+            <a href="?page={{ entries.next_num }}">Next</a>
+          {% endif %}
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
