@@ -60,6 +60,12 @@ class LogEntry(db.Model):
     message = db.Column(db.Text, nullable=False)
 
 
+class ProcessedEmail(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.String(255), unique=True, nullable=False)
+    processed_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 with app.app_context():
     db.create_all()
     if Rule.query.count() == 0:
@@ -236,13 +242,15 @@ def upload_to_onedrive(filename, content_bytes):
     log_message(f"Uploaded '{filename}' to OneDrive folder '{folder_path}'.")
 
 
-def _purge_old_logs():
+def _purge_old_records():
     retention_days = int(get_env("LOG_RETENTION_DAYS", 30))
     cutoff = datetime.utcnow() - timedelta(days=retention_days)
-    deleted = LogEntry.query.filter(LogEntry.created_at < cutoff).delete()
+    deleted_logs = LogEntry.query.filter(LogEntry.created_at < cutoff).delete()
+    deleted_emails = ProcessedEmail.query.filter(ProcessedEmail.processed_at < cutoff).delete()
     db.session.commit()
-    if deleted:
-        logger.info("Purged %d log entries older than %d days.", deleted, retention_days)
+    if deleted_logs or deleted_emails:
+        logger.info("Purged %d log entries and %d processed email records older than %d days.",
+                    deleted_logs, deleted_emails, retention_days)
 
 
 def poll_inbox():
@@ -274,6 +282,11 @@ def poll_inbox():
                             if status != "OK":
                                 continue
                             message = email.message_from_bytes(data[0][1])
+                            msg_id = message.get("Message-ID", "").strip()
+                            if not msg_id:
+                                continue
+                            if ProcessedEmail.query.filter_by(message_id=msg_id).first():
+                                continue
                             upload_failed = False
                             for part in message.walk():
                                 content_disposition = part.get("Content-Disposition", "")
@@ -294,8 +307,9 @@ def poll_inbox():
                                         else:
                                             log_message(f"Attachment '{filename}' did not match any rules.")
                             if not upload_failed:
-                                mail.store(num, "+FLAGS", "\\Seen")
-                _purge_old_logs()
+                                db.session.add(ProcessedEmail(message_id=msg_id))
+                                db.session.commit()
+                _purge_old_records()
             except Exception as exc:
                 log_message(f"Email polling error: {exc}", "ERROR")
 
