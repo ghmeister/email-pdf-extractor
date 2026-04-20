@@ -28,6 +28,7 @@
 
       <section>
         <h2>Add a new rule</h2>
+        <p class="hint">Separate multiple values with <code>|</code> for OR matching (e.g. <code>invoice|receipt</code>).</p>
         <form method="post">
           <label>Name <input name="name" required></label>
           <label><input name="enabled" type="checkbox" checked> Enabled</label>
@@ -49,7 +50,7 @@
               <th>Name</th>
               <th>Enabled</th>
               <th>Conditions</th>
-              <th>Action</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -59,9 +60,14 @@
               <td>{{ rule.name }}</td>
               <td>{{ 'Yes' if rule.enabled else 'No' }}</td>
               <td>
-                {{ rule.sender_contains }} | {{ rule.subject_contains }} | {{ rule.filename_contains }} | {{ rule.body_contains }} | {{ rule.pdf_text_contains }}
+                {% if rule.sender_contains %}<div><strong>Sender:</strong> {{ rule.sender_contains }}</div>{% endif %}
+                {% if rule.subject_contains %}<div><strong>Subject:</strong> {{ rule.subject_contains }}</div>{% endif %}
+                {% if rule.filename_contains %}<div><strong>Filename:</strong> {{ rule.filename_contains }}</div>{% endif %}
+                {% if rule.body_contains %}<div><strong>Body:</strong> {{ rule.body_contains }}</div>{% endif %}
+                {% if rule.pdf_text_contains %}<div><strong>PDF text:</strong> {{ rule.pdf_text_contains }}</div>{% endif %}
               </td>
-              <td>
+              <td class="actions">
+                <a href="{{ url_for('edit_rule', rule_id=rule.id) }}" class="btn">Edit</a>
                 <form method="post" action="{{ url_for('delete_rule', rule_id=rule.id) }}" onsubmit="return confirm('Delete this rule?');">
                   <button type="submit">Delete</button>
                 </form>

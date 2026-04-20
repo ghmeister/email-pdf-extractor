@@ -22,4 +22,7 @@ services:
       - ONEDRIVE_REFRESH_TOKEN
       - ONEDRIVE_FOLDER_PATH=/Documents/Invoices
       - SECRET_KEY=replace-this-with-a-secure-value
+      - UI_USER=admin
+      - UI_PASSWORD
+      - LOG_RETENTION_DAYS=30
     restart: unless-stopped

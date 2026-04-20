@@ -81,3 +81,31 @@ button:hover {
 .pagination a {
   color: #2563eb;
 }
+.hint {
+  color: #6b7280;
+  font-size: 0.875rem;
+  margin: -4px 0 16px;
+}
+.hint code {
+  background: #f3f4f6;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.btn {
+  display: inline-block;
+  background: #4b5563;
+  color: white;
+  padding: 8px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.btn:hover {
+  background: #374151;
+}

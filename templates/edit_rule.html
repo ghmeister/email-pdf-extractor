@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Edit Rule - Email PDF Extractor</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <header>
+      <h1>Edit Rule</h1>
+      <nav>
+        <a href="{{ url_for('index') }}">Home</a>
+        <a href="{{ url_for('rules') }}">Rules</a>
+        <a href="{{ url_for('logs') }}">Logs</a>
+      </nav>
+    </header>
+    <main>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-list">
+            {% for category, message in messages %}
+              <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <section>
+        <h2>Edit "{{ rule.name }}"</h2>
+        <p class="hint">Separate multiple values with <code>|</code> for OR matching (e.g. <code>invoice|receipt</code>).</p>
+        <form method="post">
+          <label>Name <input name="name" value="{{ rule.name }}" required></label>
+          <label><input name="enabled" type="checkbox" {% if rule.enabled %}checked{% endif %}> Enabled</label>
+          <label>Sender contains <input name="sender_contains" value="{{ rule.sender_contains }}"></label>
+          <label>Subject contains <input name="subject_contains" value="{{ rule.subject_contains }}"></label>
+          <label>Filename contains <input name="filename_contains" value="{{ rule.filename_contains }}"></label>
+          <label>Email body contains <input name="body_contains" value="{{ rule.body_contains }}"></label>
+          <label>PDF text contains <input name="pdf_text_contains" value="{{ rule.pdf_text_contains }}"></label>
+          <button type="submit">Update rule</button>
+          <a href="{{ url_for('rules') }}" class="btn">Cancel</a>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>
