@@ -1,3 +1,4 @@
+import json
 import os
 import threading
 import time
@@ -227,7 +228,7 @@ def get_access_token() -> str:
     return result["access_token"]
 
 
-def upload_to_onedrive(filename, content_bytes):
+def upload_to_onedrive(filename, content_bytes, content_type="application/pdf"):
     access_token = get_access_token()
     folder_path = os.environ.get("ONEDRIVE_FOLDER_PATH", "/Documents/Invoices").strip("/")
     safe_folder = "/".join(requests.utils.quote(p, safe="") for p in folder_path.split("/"))
@@ -235,11 +236,30 @@ def upload_to_onedrive(filename, content_bytes):
     upload_url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{safe_folder}/{safe_filename}:/content"
     headers = {
         "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/pdf",
+        "Content-Type": content_type,
     }
     response = requests.put(upload_url, headers=headers, data=content_bytes)
     response.raise_for_status()
-    log_message(f"Uploaded '{filename}' to OneDrive folder '{folder_path}'.")
+    if content_type == "application/pdf":
+        log_message(f"Uploaded '{filename}' to OneDrive folder '{folder_path}'.")
+
+
+def _upload_sidecar(filename, message):
+    """Upload a .meta.json sidecar alongside a PDF so pdf-renamer can read email context."""
+    meta = {
+        "source": "email",
+        "from": message.get("From", ""),
+        "subject": message.get("Subject", ""),
+        "date": message.get("Date", ""),
+    }
+    try:
+        upload_to_onedrive(
+            f"{filename}.meta.json",
+            json.dumps(meta, ensure_ascii=False).encode("utf-8"),
+            content_type="application/json",
+        )
+    except Exception as exc:
+        log_message(f"Failed to upload sidecar for '{filename}': {exc}", "ERROR")
 
 
 def _purge_old_records():
@@ -273,6 +293,7 @@ def _process_message(message) -> bool:
         if match_rule(message, filename, pdf_text, email_body):
             try:
                 upload_to_onedrive(filename, content)
+                _upload_sidecar(filename, message)
             except Exception as exc:
                 log_message(f"Upload failed for '{filename}': {exc}", "ERROR")
                 upload_failed = True
