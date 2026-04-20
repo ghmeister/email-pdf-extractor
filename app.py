@@ -25,17 +25,14 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///data/app.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "connect_args": {"timeout": 20},
-}
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 @event.listens_for(Engine, "connect")
-def _set_sqlite_wal(dbapi_conn, _):
+def _set_sqlite_pragmas(dbapi_conn, _):
     if isinstance(dbapi_conn, sqlite3.Connection):
         dbapi_conn.execute("PRAGMA journal_mode=WAL")
+        dbapi_conn.execute("PRAGMA busy_timeout=20000")
 
 db = SQLAlchemy(app)
 
@@ -296,6 +293,8 @@ def poll_inbox():
                 _purge_old_logs()
             except Exception as exc:
                 log_message(f"Email polling error: {exc}", "ERROR")
+            finally:
+                db.session.remove()
 
             time.sleep(interval)
 
