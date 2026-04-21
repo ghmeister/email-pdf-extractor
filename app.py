@@ -336,7 +336,7 @@ def poll_inbox():
                         log_message("Failed to search inbox.", "ERROR")
                     else:
                         for uid in data[0].split():
-                            status, msg_data = mail.uid("fetch", uid, "(RFC822)")
+                            status, msg_data = mail.uid("fetch", uid, "(BODY.PEEK[])")
                             if status != "OK":
                                 continue
                             message = email.message_from_bytes(msg_data[0][1])
