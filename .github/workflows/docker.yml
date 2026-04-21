@@ -5,7 +5,27 @@ on:
     branches: [master]
 
 jobs:
+  versioning:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.calculate-version.outputs.version-string }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Calculate version
+        id: calculate-version
+        uses: bitshifted/git-auto-semver@v2.0.11
+        with:
+          create_tag: true
+          initial_version: 1.0.0
+
   build:
+    needs: versioning
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,4 +46,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:latest
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ needs.versioning.outputs.version }}
+          build-args: APP_VERSION=${{ needs.versioning.outputs.version }}

@@ -24,6 +24,12 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
+_APP_VERSION = os.environ.get("APP_VERSION", "dev")
+
+
+@app.context_processor
+def inject_globals():
+    return {"app_version": _APP_VERSION}
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:////app/data/app.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
