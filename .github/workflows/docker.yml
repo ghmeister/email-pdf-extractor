@@ -8,21 +8,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       packages: write
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          fetch-tags: true
 
       - name: Calculate version
         id: version
-        uses: bitshifted/git-auto-semver@v2.0.11
-        with:
-          create_tag: true
-          initial_version: 1.0.0
+        run: echo "version=1.0.$(git rev-list --count HEAD)" >> $GITHUB_OUTPUT
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -38,5 +34,5 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version-string }}
-          build-args: APP_VERSION=${{ steps.version.outputs.version-string }}
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+          build-args: APP_VERSION=${{ steps.version.outputs.version }}
