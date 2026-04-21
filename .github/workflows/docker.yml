@@ -3,6 +3,8 @@ name: Build and push Docker image
 on:
   push:
     branches: [master]
+  pull_request:
+    branches: [master]
 
 jobs:
   versioning:
@@ -19,6 +21,7 @@ jobs:
 
       - name: Calculate version
         id: calculate-version
+        if: ${{ github.event_name == 'push' }}
         uses: bitshifted/git-auto-semver@v2.0.11
         with:
           create_tag: true
@@ -26,6 +29,7 @@ jobs:
 
   build:
     needs: versioning
+    if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
