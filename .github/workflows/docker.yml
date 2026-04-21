@@ -3,16 +3,14 @@ name: Build and push Docker image
 on:
   push:
     branches: [master]
-  pull_request:
-    branches: [master]
 
 jobs:
-  versioning:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    outputs:
-      version: ${{ steps.calculate-version.outputs.version-string }}
+      packages: write
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,23 +18,11 @@ jobs:
           fetch-tags: true
 
       - name: Calculate version
-        id: calculate-version
-        if: ${{ github.event_name == 'push' }}
+        id: version
         uses: bitshifted/git-auto-semver@v2.0.11
         with:
           create_tag: true
           initial_version: 1.0.0
-
-  build:
-    needs: versioning
-    if: ${{ github.event_name == 'push' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - uses: actions/checkout@v4
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -52,5 +38,5 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ needs.versioning.outputs.version }}
-          build-args: APP_VERSION=${{ needs.versioning.outputs.version }}
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version-string }}
+          build-args: APP_VERSION=${{ steps.version.outputs.version-string }}
