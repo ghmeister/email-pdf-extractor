@@ -8,7 +8,6 @@ import logging
 import tempfile
 import sqlite3
 from datetime import datetime, timedelta
-from functools import wraps
 from pathlib import Path
 
 import msal
@@ -16,7 +15,7 @@ import requests
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import NullPool
-from flask import Flask, render_template, request, redirect, url_for, flash, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, Response, session
 from flask_sqlalchemy import SQLAlchemy
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
@@ -88,24 +87,37 @@ with app.app_context():
 
 # --- Auth ---
 
-def _check_auth(username, password):
-    ui_user = os.environ.get("UI_USER", "admin")
-    ui_password = os.environ.get("UI_PASSWORD", "")
-    return bool(ui_password) and username == ui_user and password == ui_password
+_UI_USER = os.environ.get("UI_USER", "admin")
+_UI_PASSWORD = os.environ.get("UI_PASSWORD", "")
 
 
-def require_auth(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not _check_auth(auth.username, auth.password):
-            return Response(
-                "Authentication required.",
-                401,
-                {"WWW-Authenticate": 'Basic realm="Email PDF Extractor"'},
-            )
-        return f(*args, **kwargs)
-    return decorated
+@app.before_request
+def _require_auth():
+    if not _UI_PASSWORD:
+        return  # auth not configured — allow all (dev/local)
+    if request.endpoint in ("login", "logout", "health", "static"):
+        return
+    if not session.get("logged_in"):
+        return redirect(url_for("login", next=request.path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        if (request.form.get("username") == _UI_USER
+                and request.form.get("password") == _UI_PASSWORD):
+            session.permanent = True
+            session["logged_in"] = True
+            return redirect(request.args.get("next") or "/")
+        error = "Invalid credentials"
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 # --- Polling state ---
@@ -362,7 +374,6 @@ def poll_inbox():
 # --- Routes ---
 
 @app.route("/")
-@require_auth
 def index():
     rules = Rule.query.order_by(Rule.id).all()
     logs = LogEntry.query.order_by(LogEntry.created_at.desc()).limit(10).all()
@@ -370,7 +381,6 @@ def index():
 
 
 @app.route("/rules", methods=["GET", "POST"])
-@require_auth
 def rules():
     if request.method == "POST":
         form = request.form
@@ -393,7 +403,6 @@ def rules():
 
 
 @app.route("/rules/edit/<int:rule_id>", methods=["GET", "POST"])
-@require_auth
 def edit_rule(rule_id):
     rule = db.get_or_404(Rule, rule_id)
     if request.method == "POST":
@@ -412,7 +421,6 @@ def edit_rule(rule_id):
 
 
 @app.route("/rules/delete/<int:rule_id>", methods=["POST"])
-@require_auth
 def delete_rule(rule_id):
     rule = db.get_or_404(Rule, rule_id)
     db.session.delete(rule)
@@ -422,7 +430,6 @@ def delete_rule(rule_id):
 
 
 @app.route("/logs")
-@require_auth
 def logs():
     page = int(request.args.get("page", 1))
     per_page = 25

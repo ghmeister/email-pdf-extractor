@@ -3,6 +3,10 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Email PDF">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
     <title>Logs - Email PDF Extractor</title>
     <link rel="stylesheet" href="/static/style.css">
   </head>
@@ -13,6 +17,7 @@
         <a href="{{ url_for('index') }}">Home</a>
         <a href="{{ url_for('rules') }}">Rules</a>
         <a href="{{ url_for('logs') }}">Logs</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
       </nav>
     </header>
     <main>

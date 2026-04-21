@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Email PDF">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <title>Login – Email PDF Extractor</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+      .login-wrap {
+        max-width: 360px;
+        margin: 80px auto;
+        background: white;
+        border-radius: 12px;
+        padding: 32px;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+      }
+      .login-wrap h2 { margin: 0 0 24px; }
+      .error {
+        background: #fee2e2;
+        color: #991b1b;
+        padding: 10px 12px;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        font-size: 0.9rem;
+      }
+      input[type="text"], input[type="password"] {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        box-sizing: border-box;
+      }
+      button { width: 100%; margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <div class="login-wrap">
+      <h2>✉ Email PDF Extractor</h2>
+      {% if error %}
+        <div class="error">{{ error }}</div>
+      {% endif %}
+      <form method="post">
+        <label>
+          Username
+          <input type="text" name="username" autofocus autocomplete="username">
+        </label>
+        <label>
+          Password
+          <input type="password" name="password" autocomplete="current-password">
+        </label>
+        <button type="submit">Log in</button>
+      </form>
+    </div>
+  </body>
+</html>
