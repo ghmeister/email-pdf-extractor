@@ -3,8 +3,6 @@ services:
   email-pdf-extractor:
     image: ghcr.io/ghmeister/email-pdf-extractor:latest
     container_name: email-pdf-extractor
-    ports:
-      - "5001:5000"
     volumes:
       - email_pdf_data:/app/data
     environment:
@@ -26,6 +24,12 @@ services:
       - PROCESSED_EMAIL_RETENTION_DAYS=365
       - POLL_LOOKBACK_DAYS=90
     restart: unless-stopped
+    networks:
+      - proxy
 
 volumes:
   email_pdf_data:
+
+networks:
+  proxy:
+    external: true

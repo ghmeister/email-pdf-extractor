@@ -1,0 +1,37 @@
+version: "3.9"
+
+# Nginx Proxy Manager — reverse proxy for all home server apps.
+# Deploy this stack once; app stacks join the shared "proxy" network.
+#
+# First-time setup:
+#   docker network create proxy
+#   docker compose up -d
+#   Open http://192.168.188.186:81 (admin UI)
+#   Default login: admin@example.com / changeme  ← change immediately
+#
+# Then add proxy hosts in the NPM UI:
+#   email.meisterm.dnsuser.de  → http  email-pdf-extractor  5000
+#   ablage.meisterm.dnsuser.de → http  ablage-web           5000
+
+services:
+  npm:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - "80:80"       # HTTP (public)
+      - "443:443"     # HTTPS (public, for Let's Encrypt later)
+      - "81:81"       # NPM admin UI (keep behind VPN or firewall)
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    networks:
+      - proxy
+
+volumes:
+  npm_data:
+  npm_letsencrypt:
+
+networks:
+  proxy:
+    external: true
