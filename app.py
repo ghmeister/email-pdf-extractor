@@ -297,14 +297,17 @@ def _process_message(message) -> bool:
     email_body = extract_email_body(message)
     upload_failed = False
     for part in message.walk():
+        filename = part.get_filename() or ""
         is_pdf = part.get_content_type() == "application/pdf"
         is_attachment = "attachment" in part.get("Content-Disposition", "").lower()
-        if not (is_pdf or is_attachment):
+        has_pdf_filename = filename.lower().endswith(".pdf")
+        if not (is_pdf or is_attachment or has_pdf_filename):
             continue
-        filename = part.get_filename() or "attachment.pdf"
-        if not filename.lower().endswith(".pdf"):
+        if not has_pdf_filename:
             continue
         content = part.get_payload(decode=True)
+        if not content:
+            continue
         with tempfile.SpooledTemporaryFile(mode="w+b", buffering=0) as tmp:
             tmp.write(content)
             tmp.seek(0)
@@ -356,6 +359,8 @@ def poll_inbox():
                         for uid in data[0].split():
                             status, msg_data = mail.uid("fetch", uid, "(BODY.PEEK[])")
                             if status != "OK":
+                                continue
+                            if not msg_data or msg_data[0] is None:
                                 continue
                             message = email.message_from_bytes(msg_data[0][1])
                             msg_id = message.get("Message-ID", "").strip()
