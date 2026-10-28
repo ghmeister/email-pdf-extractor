@@ -21,6 +21,8 @@ A Dockerized Python service that scans an IMAP inbox, extracts PDF attachments, 
    - `IMAP_PASS`
    - `IMAP_FOLDER` (default `INBOX`)
    - `POLL_INTERVAL` (default `120` seconds)
+   - `IMAP_TIMEOUT` (default `60` seconds)
+   - `POLL_ERROR_THRESHOLD` (default `3`; failed polls in a row before an ERROR is logged, single failures are logged as WARNING)
    - `ONEDRIVE_TENANT_ID`
    - `ONEDRIVE_CLIENT_ID`
    - `ONEDRIVE_CLIENT_SECRET`
@@ -40,6 +42,8 @@ The web UI lets you add rules to match PDFs based on:
 - attachment filename contains
 - email body contains
 - PDF text contains
+
+Each rule can also have an **exclude** list: if the sender, subject or attachment filename contains one of these terms, the rule does not match. A rule with all conditions empty matches every PDF, so an empty rule with an exclude list (e.g. `newsletter|agb`) works as a catch-all with exceptions.
 
 ## Notes
 

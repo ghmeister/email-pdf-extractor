@@ -60,6 +60,8 @@ class Rule(db.Model):
     filename_contains = db.Column(db.String(255), default="")
     body_contains = db.Column(db.String(255), default="")
     pdf_text_contains = db.Column(db.String(255), default="")
+    # The rule never matches if sender, subject or filename contains one of these terms.
+    exclude_contains = db.Column(db.String(255), default="")
 
 
 class LogEntry(db.Model):
@@ -75,8 +77,20 @@ class ProcessedEmail(db.Model):
     processed_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+def _add_missing_columns():
+    """create_all() does not add new columns to existing tables, so add them here."""
+    new_columns = {"rule": {"exclude_contains": "VARCHAR(255) DEFAULT ''"}}
+    with db.engine.begin() as conn:
+        for table, columns in new_columns.items():
+            existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
+            for name, ddl in columns.items():
+                if name not in existing:
+                    conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+
 with app.app_context():
     db.create_all()
+    _add_missing_columns()
     if Rule.query.count() == 0:
         db.session.add(Rule(
             name="Invoice (EN)",
@@ -166,6 +180,11 @@ def _condition_matches(condition_str, target):
 
 def match_rule(message, attachment_name, pdf_text, email_body=""):
     for rule in load_rules():
+        if rule.exclude_contains and any(
+            _condition_matches(rule.exclude_contains, target)
+            for target in (message.get("From", ""), message.get("Subject", ""), attachment_name)
+        ):
+            continue
         if rule.sender_contains and not _condition_matches(rule.sender_contains, message.get("From", "")):
             continue
         if rule.subject_contains and not _condition_matches(rule.subject_contains, message.get("Subject", "")):
@@ -324,6 +343,14 @@ def _process_message(message) -> bool:
     return not upload_failed
 
 
+def _fetch_message_id(mail, uid):
+    """Fetch only the Message-ID header, so already processed emails are not downloaded again."""
+    status, data = mail.uid("fetch", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+    if status != "OK" or not data or not isinstance(data[0], tuple):
+        return ""
+    return email.message_from_bytes(data[0][1]).get("Message-ID", "").strip()
+
+
 def poll_inbox():
     global _poll_last_at
     host = os.environ.get("IMAP_HOST")
@@ -333,6 +360,11 @@ def poll_inbox():
     folder = os.environ.get("IMAP_FOLDER", "INBOX")
     interval = int(os.environ.get("POLL_INTERVAL", 120))
     lookback_days = int(os.environ.get("POLL_LOOKBACK_DAYS", 90))
+    imap_timeout = int(os.environ.get("IMAP_TIMEOUT", 60))
+    # Single timeouts happen now and then and fix themselves on the next poll;
+    # only report an ERROR when several polls in a row fail.
+    error_threshold = int(os.environ.get("POLL_ERROR_THRESHOLD", 3))
+    consecutive_failures = 0
 
     with app.app_context():
         if not all([host, username, password]):
@@ -349,7 +381,7 @@ def poll_inbox():
             try:
                 _poll_last_at = datetime.utcnow()
                 since_date = (_poll_last_at - timedelta(days=lookback_days)).strftime("%d-%b-%Y")
-                with imaplib.IMAP4_SSL(host, port, timeout=30) as mail:
+                with imaplib.IMAP4_SSL(host, port, timeout=imap_timeout) as mail:
                     mail.login(username, password)
                     mail.select(folder)
                     status, data = mail.uid("search", None, f"UNSEEN SINCE {since_date}")
@@ -357,6 +389,9 @@ def poll_inbox():
                         log_message("Failed to search inbox.", "ERROR")
                     else:
                         for uid in data[0].split():
+                            header_id = _fetch_message_id(mail, uid)
+                            if header_id and ProcessedEmail.query.filter_by(message_id=header_id).first():
+                                continue
                             status, msg_data = mail.uid("fetch", uid, "(BODY.PEEK[])")
                             if status != "OK":
                                 continue
@@ -375,9 +410,14 @@ def poll_inbox():
                                 except Exception:
                                     db.session.rollback()
                 _purge_old_records()
+                if consecutive_failures >= error_threshold:
+                    log_message(f"Email polling recovered after {consecutive_failures} failed attempts.")
+                consecutive_failures = 0
             except Exception as exc:
-                log_message(f"Email polling error: {exc}", "ERROR")
                 db.session.rollback()
+                consecutive_failures += 1
+                level = "ERROR" if consecutive_failures >= error_threshold else "WARNING"
+                log_message(f"Email polling error ({consecutive_failures}x in a row): {exc}", level)
 
             time.sleep(interval)
 
@@ -403,6 +443,7 @@ def rules():
             filename_contains=form.get("filename_contains", ""),
             body_contains=form.get("body_contains", ""),
             pdf_text_contains=form.get("pdf_text_contains", ""),
+            exclude_contains=form.get("exclude_contains", ""),
         )
         db.session.add(rule)
         db.session.commit()
@@ -425,6 +466,7 @@ def edit_rule(rule_id):
         rule.filename_contains = form.get("filename_contains", "")
         rule.body_contains = form.get("body_contains", "")
         rule.pdf_text_contains = form.get("pdf_text_contains", "")
+        rule.exclude_contains = form.get("exclude_contains", "")
         db.session.commit()
         flash("Rule updated.", "success")
         return redirect(url_for("rules"))

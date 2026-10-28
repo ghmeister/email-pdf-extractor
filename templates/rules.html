@@ -42,6 +42,7 @@
           <label>Filename contains <input name="filename_contains"></label>
           <label>Email body contains <input name="body_contains"></label>
           <label>PDF text contains <input name="pdf_text_contains"></label>
+          <label>Exclude if sender, subject or filename contains <input name="exclude_contains"></label>
           <button type="submit">Save rule</button>
         </form>
       </section>
@@ -70,6 +71,7 @@
                 {% if rule.filename_contains %}<div><strong>Filename:</strong> {{ rule.filename_contains }}</div>{% endif %}
                 {% if rule.body_contains %}<div><strong>Body:</strong> {{ rule.body_contains }}</div>{% endif %}
                 {% if rule.pdf_text_contains %}<div><strong>PDF text:</strong> {{ rule.pdf_text_contains }}</div>{% endif %}
+                {% if rule.exclude_contains %}<div><strong>Exclude:</strong> {{ rule.exclude_contains }}</div>{% endif %}
               </td>
               <td class="actions">
                 <a href="{{ url_for('edit_rule', rule_id=rule.id) }}" class="btn">Edit</a>
